@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Check, Volume2 } from "lucide-react";
+import { Check, Trash2, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,7 @@ export function WordPopover({ word }: { word: PageWord }) {
   const confirmWord = usePageStore((s) => s.confirmWord);
   const setPhonetic = usePageStore((s) => s.setPhonetic);
   const playWord = usePageStore((s) => s.playWord);
+  const removeWord = usePageStore((s) => s.removeWord);
   const spellingRef = useRef<HTMLInputElement>(null);
   const soundRef = useRef<HTMLInputElement>(null);
 
@@ -97,6 +98,15 @@ export function WordPopover({ word }: { word: PageWord }) {
       >
         <Volume2 />
         {playingThis ? "Playing…" : editorMode === "pronunciation" ? "Play sound" : "Play this word"}
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="mt-1 w-full text-danger hover:bg-danger-soft hover:text-danger"
+        onClick={() => removeWord(word.id)}
+      >
+        <Trash2 />
+        Remove word
       </Button>
     </div>
   );

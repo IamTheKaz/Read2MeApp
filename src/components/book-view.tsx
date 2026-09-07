@@ -152,7 +152,7 @@ export function BookView({ book }: { book: Book }) {
 
       {editorOpen ? (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(20rem,22rem)] lg:items-start">
-          <section className="overflow-x-auto rounded-2xl bg-surface p-3 shadow-border sm:p-4">
+          <section className="overflow-visible rounded-2xl bg-surface p-3 shadow-border sm:p-4">
             <PageCanvas />
             {ocr.status === "error" && <p className="mt-3 text-sm text-danger">{ocr.message}</p>}
             {ocr.status === "done" && words.length === 0 && (

@@ -21,10 +21,12 @@ export function TeacherApp() {
   const selectedId = usePageStore((s) => s.selectedId);
   const editorMode = usePageStore((s) => s.editorMode);
   const showOrderEditor = usePageStore((s) => s.showOrderEditor);
+  const placingWord = usePageStore((s) => s.placingWord);
   const playback = usePageStore((s) => s.playback);
   const selectWord = usePageStore((s) => s.selectWord);
   const stopPlayback = usePageStore((s) => s.stopPlayback);
   const setShowOrderEditor = usePageStore((s) => s.setShowOrderEditor);
+  const setPlacingWord = usePageStore((s) => s.setPlacingWord);
   const activeBook = useActiveBook();
   const hydrate = useBookStore((s) => s.hydrate);
   const [view, setView] = useState<"books" | "scores">("books");
@@ -40,10 +42,11 @@ export function TeacherApp() {
       stopPlayback();
       selectWord(null, false);
       setShowOrderEditor(false);
+      setPlacingWord(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectWord, setShowOrderEditor, stopPlayback]);
+  }, [selectWord, setPlacingWord, setShowOrderEditor, stopPlayback]);
 
   const editorOpen = Boolean(activeBook && image);
 
@@ -64,7 +67,9 @@ export function TeacherApp() {
         ? "Your books"
         : !image
           ? `Add a page to “${activeBook.name}”`
-          : showOrderEditor
+          : placingWord
+            ? "Tap the page to add a missed word"
+            : showOrderEditor
             ? "Fixing reading order"
             : selectedId && editorMode === "pronunciation"
               ? "Fixing pronunciation"

@@ -39,6 +39,7 @@ export function StudentApp() {
   const [nameInput, setNameInput] = useState("");
   const [pageIndex, setPageIndex] = useState(0);
   const [finishedPages, setFinishedPages] = useState<Set<string>>(new Set());
+  const [heardPages, setHeardPages] = useState<Set<string>>(new Set());
   const [playing, setPlaying] = useState(false);
   const [activeWordId, setActiveWordId] = useState<string | null>(null);
   const [round, setRound] = useState<FindRound | null>(null);
@@ -58,6 +59,7 @@ export function StudentApp() {
 
   const pages = useMemo(() => book?.pages ?? [], [book]);
   const page: BookPage | null = pages[pageIndex] ?? null;
+  const listened = Boolean(page && heardPages.has(page.id));
   const plan = useMemo(
     () => (page ? buildSpeechPlan(page.words, page.layout, page.image.width, page.sentenceOverride) : null),
     [page],
@@ -89,6 +91,19 @@ export function StudentApp() {
     });
   }
 
+  function markHeard(id: string) {
+    setHeardPages((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }
+
+  function unmarkHeard(id: string) {
+    setHeardPages((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }
+
   function chooseBook(b: Book) {
     setBook(b);
     setPhase("name");
@@ -100,6 +115,7 @@ export function StudentApp() {
     setName(trimmed);
     setPageIndex(0);
     setFinishedPages(new Set());
+    setHeardPages(new Set());
     setRound(null);
     setPhase("read");
   }
@@ -134,18 +150,27 @@ export function StudentApp() {
     applyRound(next);
     if (targets.length === 0) {
       markPageDone(page.id);
-      return;
     }
-    const gen = bumpSpeech();
-    const handle = speakText(findPrompt(targets[0]!), { rate: 0.85 });
-    void handle.done.then(() => {
-      if (speechGen.current !== gen) return;
-    });
     return () => {
       cancelSpeech();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, page?.id]);
+
+  useEffect(() => {
+    if (phase !== "read" || !page || !listened) return;
+    const r = roundRef.current;
+    if (!r || r.pageId !== page.id || r.current >= r.targets.length) return;
+    const target = r.targets[r.current];
+    if (!target) return;
+    applyRound({ ...r, promptAt: Date.now(), missId: null });
+    const gen = bumpSpeech();
+    speakText(findPrompt(target), { rate: 0.85 });
+    return () => {
+      if (speechGen.current === gen) cancelSpeech();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, page?.id, listened]);
 
   function playNarration() {
     if (!page || !plan || !plan.spoken) return;
@@ -159,11 +184,7 @@ export function StudentApp() {
     void handle.done.then(() => {
       if (speechGen.current !== gen) return;
       stopNarration();
-      const r = roundRef.current;
-      if (r && r.current < r.targets.length) {
-        const target = r.targets[r.current];
-        if (target) speakText(findPrompt(target), { rate: 0.85 });
-      }
+      markHeard(page.id);
     });
   }
 
@@ -174,7 +195,7 @@ export function StudentApp() {
 
   function repeatPrompt() {
     const r = roundRef.current;
-    if (!r || r.current >= r.targets.length) return;
+    if (!listened || !r || r.current >= r.targets.length) return;
     const target = r.targets[r.current];
     if (!target) return;
     bumpSpeech();
@@ -190,7 +211,7 @@ export function StudentApp() {
 
     const speakClicked = () => speakText(getSpokenWordText(word), { rate: 0.7 });
 
-    if (!r || r.current >= r.targets.length) {
+    if (!listened || !r || r.current >= r.targets.length) {
       speakClicked();
       return;
     }
@@ -268,6 +289,7 @@ export function StudentApp() {
     setName("");
     setNameInput("");
     setFinishedPages(new Set());
+    setHeardPages(new Set());
     setPageIndex(0);
     setRound(null);
     setPhase("pick");
@@ -389,7 +411,14 @@ export function StudentApp() {
         </p>
 
         <div className="mx-auto mt-4 max-w-2xl rounded-xl bg-surface px-4 py-3 shadow-border">
-          {currentTarget ? (
+          {!listened && targetCount > 0 ? (
+            <p className="text-center font-display text-xl font-medium tracking-tight">
+              Listen to the page first
+              <span className="mt-1 block text-sm font-normal text-muted">
+                Play <span className="font-medium text-fg">Read to me</span> all the way through. Then find the words.
+              </span>
+            </p>
+          ) : currentTarget ? (
             <div className="flex flex-wrap items-center justify-center gap-2">
               <p className="text-center font-display text-xl font-medium tracking-tight">
                 Find the word{" "}
@@ -431,13 +460,16 @@ export function StudentApp() {
                     key={w.id}
                     type="button"
                     className="word-box"
-                    data-clickable="true"
+                    data-clickable={listened ? "true" : "false"}
                     data-karaoke={karaoke ? "true" : "false"}
-                    data-found={found ? "true" : "false"}
-                    data-miss={miss ? "true" : "false"}
+                    data-found={found && listened ? "true" : "false"}
+                    data-miss={miss && listened ? "true" : "false"}
                     style={{ left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%` }}
                     aria-label={w.text}
-                    onClick={() => onWordClick(w)}
+                    disabled={!listened}
+                    onClick={() => {
+                      if (listened) onWordClick(w);
+                    }}
                   />
                 );
               })}
@@ -449,6 +481,7 @@ export function StudentApp() {
             variant="outline"
             onClick={() => {
               unmarkPage(page.id);
+              unmarkHeard(page.id);
               goTo(pageIndex - 1);
             }}
             disabled={pageIndex === 0}
@@ -462,7 +495,7 @@ export function StudentApp() {
               Stop
             </Button>
           ) : (
-            <Button onClick={playNarration} className="min-w-36" variant="secondary">
+            <Button onClick={playNarration} className="min-w-36" variant={listened ? "secondary" : "default"}>
               <Play />
               Read to me
             </Button>
@@ -478,7 +511,11 @@ export function StudentApp() {
           </Button>
         </div>
         {!pageComplete && targetCount > 0 && (
-          <p className="mt-2 text-center text-sm text-muted">Find each word before Next unlocks.</p>
+          <p className="mt-2 text-center text-sm text-muted">
+            {!listened
+              ? "Finish Read to me before the word game starts."
+              : "Find each word before Next unlocks."}
+          </p>
         )}
 
         {allDone && (

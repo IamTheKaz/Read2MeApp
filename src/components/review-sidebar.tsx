@@ -32,6 +32,9 @@ export function ReviewSidebar() {
   const beginBookPage = usePageStore((s) => s.beginBookPage);
   const ocr = usePageStore((s) => s.ocr);
   const ttsAvailable = usePageStore((s) => s.ttsAvailable);
+  const placingWord = usePageStore((s) => s.placingWord);
+  const setPlacingWord = usePageStore((s) => s.setPlacingWord);
+  const selectWord = usePageStore((s) => s.selectWord);
   const activeBook = useActiveBook();
 
   if (!image) return null;
@@ -118,6 +121,17 @@ export function ReviewSidebar() {
             <ListOrdered />
             Fix reading order
           </Button>
+          <Button
+            variant={placingWord ? "secondary" : "outline"}
+            onClick={() => {
+              setPlacingWord(!placingWord);
+              if (!placingWord) selectWord(null, false);
+            }}
+            disabled={ocr.status !== "done"}
+          >
+            <Plus />
+            {placingWord ? "Tap the page to place it" : "Add missed word"}
+          </Button>
           {confirmed < words.length && words.length > 0 && (
             <Button variant="ghost" onClick={confirmRemaining}>
               <Check />
@@ -184,8 +198,8 @@ export function ReviewSidebar() {
 
       <p className="flex items-start gap-2 text-xs text-subtle">
         <Volume2 className="mt-0.5 size-3.5 shrink-0" />
-        Tap a word on the page to hear it alone and fix spelling or sound. Use Preview narration for the full
-        sentence in context.
+        Tap a word on the page to hear it alone and fix spelling or sound. Use Add missed word for boxes
+        OCR skipped. Preview narration is the full sentence in context.
       </p>
     </aside>
   );

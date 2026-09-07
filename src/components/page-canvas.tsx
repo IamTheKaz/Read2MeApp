@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties } from "react";
+import { useMemo, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { LoaderCircle } from "lucide-react";
 import { WordPopover } from "@/components/word-popover";
 import { usePageStore } from "@/store/page-store";
@@ -10,7 +10,10 @@ export function PageCanvas() {
   const selectedId = usePageStore((s) => s.selectedId);
   const playback = usePageStore((s) => s.playback);
   const editorMode = usePageStore((s) => s.editorMode);
+  const placingWord = usePageStore((s) => s.placingWord);
   const selectWord = usePageStore((s) => s.selectWord);
+  const addWordAt = usePageStore((s) => s.addWordAt);
+  const imgRef = useRef<HTMLImageElement>(null);
 
   const selected = useMemo(
     () => words.find((w) => w.id === selectedId) ?? null,
@@ -23,7 +26,6 @@ export function PageCanvas() {
   const popoverBelow = selected
     ? selected.bbox.y1 < image.height * 0.62
     : true;
-  // Desktop-only anchored popover placement (percentage of the image).
   const popoverStyle: CSSProperties | undefined = selected
     ? {
         left: `${Math.min(58, Math.max(1, (selected.bbox.x0 / image.width) * 100))}%`,
@@ -34,15 +36,37 @@ export function PageCanvas() {
       }
     : undefined;
 
+  function pointOnImage(event: ReactPointerEvent) {
+    const el = imgRef.current;
+    if (!el || image.width <= 0) return null;
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * image.width,
+      y: ((event.clientY - rect.top) / rect.height) * image.height,
+    };
+  }
+
   return (
     <div className="relative">
       <div
         className="relative inline-block max-w-full touch-manipulation select-none"
-        onPointerDown={() => {
-          if (!running) selectWord(null, false);
+        data-placing={placingWord ? "true" : "false"}
+        onPointerDown={(event) => {
+          if (running) return;
+          if (placingWord) {
+            const point = pointOnImage(event);
+            if (point) {
+              event.preventDefault();
+              addWordAt(point);
+              return;
+            }
+          }
+          selectWord(null, false);
         }}
       >
         <img
+          ref={imgRef}
           src={image.src}
           alt={image.name}
           className="block h-auto max-h-[min(72vh,760px)] w-auto max-w-full rounded-md bg-surface-2"
@@ -64,12 +88,14 @@ export function PageCanvas() {
                 type="button"
                 className="word-box min-h-4 min-w-4"
                 style={{ left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%` }}
+                data-clickable="true"
                 data-confirmed={word.confirmed ? "true" : "false"}
                 data-selected={selectedBox ? "true" : "false"}
                 data-karaoke={karaoke || wordPlay ? "true" : "false"}
-                aria-label={`Word: ${word.text}`}
+                aria-label={`Word: ${word.text || "new word"}`}
                 onPointerDown={(event) => {
                   event.stopPropagation();
+                  if (running) return;
                   selectWord(word.id, true);
                 }}
               />
@@ -78,8 +104,6 @@ export function PageCanvas() {
 
         {selected && image.width > 0 && (
           <>
-            {/* Phones: editing a word needs room, so dock it as a bottom sheet
-                above a light scrim instead of a cramped popover over the page. */}
             <div
               className="fixed inset-0 z-30 bg-fg/30 sm:hidden"
               onPointerDown={() => selectWord(null, false)}
@@ -90,7 +114,7 @@ export function PageCanvas() {
               onPointerDown={(event) => event.stopPropagation()}
             >
               <div
-                className="sm:absolute sm:z-20 sm:w-[min(18.5rem,calc(100%-0.5rem))]"
+                className="sm:absolute sm:z-30 sm:w-[min(18.5rem,calc(100%-0.5rem))]"
                 style={popoverStyle}
               >
                 <WordPopover word={selected} />
@@ -118,7 +142,13 @@ export function PageCanvas() {
         )}
       </div>
 
-      {selected && (
+      {placingWord && (
+        <p className="mt-3 text-sm text-muted">
+          Tap the page where the missed word sits. Then type the spelling in the box.
+        </p>
+      )}
+
+      {selected && !placingWord && (
         <p className="mt-3 text-sm text-muted">
           {editorMode === "pronunciation" ? (
             <>

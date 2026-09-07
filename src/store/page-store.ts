@@ -34,6 +34,7 @@ type PageStore = {
   editorMode: EditorMode;
   showOrderEditor: boolean;
   orderDraft: string;
+  placingWord: boolean;
   ocr: OcrState;
   playback: PlaybackState;
   hasPreviewed: boolean;
@@ -54,6 +55,9 @@ type PageStore = {
   confirmWord: (id: string) => void;
   confirmRemaining: () => void;
   setPhonetic: (id: string, phonetic: string | null) => void;
+  addWordAt: (point: { x: number; y: number }) => void;
+  removeWord: (id: string) => void;
+  setPlacingWord: (on: boolean) => void;
   playWord: (id: string) => void;
   previewSentence: () => void;
   stopPlayback: () => void;
@@ -90,6 +94,7 @@ async function runOcr(src: string, name: string, set: (partial: Partial<PageStor
     editorMode: "spelling",
     showOrderEditor: false,
     orderDraft: "",
+    placingWord: false,
     ocr: { status: "running", progress: 0.02, message: "Opening the page image" },
     playback: { kind: "idle", wordId: null },
     hasPreviewed: false,
@@ -138,6 +143,7 @@ export const usePageStore = create<PageStore>((set, get) => ({
   editorMode: "spelling",
   showOrderEditor: false,
   orderDraft: "",
+  placingWord: false,
   ocr: idleOcr,
   playback: { kind: "idle", wordId: null },
   hasPreviewed: false,
@@ -170,6 +176,7 @@ export const usePageStore = create<PageStore>((set, get) => ({
       editorMode: "spelling",
       showOrderEditor: false,
       orderDraft: "",
+      placingWord: false,
       ocr: idleOcr,
       playback: { kind: "idle", wordId: null },
       hasPreviewed: false,
@@ -191,6 +198,7 @@ export const usePageStore = create<PageStore>((set, get) => ({
       editorMode: "spelling",
       showOrderEditor: false,
       orderDraft: "",
+      placingWord: false,
       ocr: idleOcr,
       playback: { kind: "idle", wordId: null },
       hasPreviewed: false,
@@ -215,6 +223,7 @@ export const usePageStore = create<PageStore>((set, get) => ({
       editorMode: "spelling",
       showOrderEditor: false,
       orderDraft: "",
+      placingWord: false,
       ocr: {
         status: "done",
         progress: 1,
@@ -248,7 +257,7 @@ export const usePageStore = create<PageStore>((set, get) => ({
       set({ selectedId: null });
       return;
     }
-    set({ selectedId: id, editorMode: "spelling", showOrderEditor: false });
+    set({ selectedId: id, editorMode: "spelling", showOrderEditor: false, placingWord: false });
     if (play) get().playWord(id);
   },
 
@@ -283,6 +292,54 @@ export const usePageStore = create<PageStore>((set, get) => ({
       words: get().words.map((w) => (w.id === id ? { ...w, phonetic: next } : w)),
       approved: false,
       approvedAt: null,
+    });
+  },
+
+  setPlacingWord: (on) => {
+    set({ placingWord: on, selectedId: on ? null : get().selectedId });
+  },
+
+  addWordAt: (point) => {
+    const { image, words } = get();
+    if (!image || image.width <= 0 || image.height <= 0) return;
+    const heights = words.map((w) => Math.max(12, w.bbox.y1 - w.bbox.y0)).sort((a, b) => a - b);
+    const boxH = heights[Math.floor(heights.length / 2)] ?? Math.max(28, image.height * 0.04);
+    const boxW = Math.max(boxH * 2.4, image.width * 0.08);
+    const x0 = Math.max(0, Math.min(image.width - 8, point.x - boxW / 2));
+    const y0 = Math.max(0, Math.min(image.height - 8, point.y - boxH / 2));
+    const word = {
+      id: crypto.randomUUID(),
+      text: "",
+      phonetic: null,
+      bbox: {
+        x0,
+        y0,
+        x1: Math.min(image.width, x0 + boxW),
+        y1: Math.min(image.height, y0 + boxH),
+      },
+      confidence: 100,
+      confirmed: false,
+    };
+    set({
+      words: [...words, word],
+      selectedId: word.id,
+      editorMode: "spelling",
+      placingWord: false,
+      showOrderEditor: false,
+      approved: false,
+      approvedAt: null,
+      hasPreviewed: false,
+    });
+  },
+
+  removeWord: (id) => {
+    const { words, selectedId } = get();
+    set({
+      words: words.filter((w) => w.id !== id),
+      selectedId: selectedId === id ? null : selectedId,
+      approved: false,
+      approvedAt: null,
+      hasPreviewed: false,
     });
   },
 

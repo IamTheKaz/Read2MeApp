@@ -3,6 +3,7 @@ import { ArrowLeft, ChevronDown, ChevronRight, Search, Users } from "lucide-reac
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { fetchWordFinds } from "@/lib/api";
+import { compareTimestamps } from "@/lib/timestamps";
 import { formatFindTime, formatWrongTries } from "@/lib/word-find";
 import type { StudentBookFinds, WordFind } from "@/server/scores";
 
@@ -112,7 +113,7 @@ function WordBreakdown({ finds }: { finds: WordFind[] }) {
     <div className="border-t border-border px-4 py-3">
       <ul className="grid gap-3">
         {pages.map(([position, words]) => {
-          const ordered = [...words].sort((a, b) => a.foundAt.localeCompare(b.foundAt));
+          const ordered = [...words].sort((a, b) => compareTimestamps(a.foundAt, b.foundAt));
           return (
             <li key={position}>
               <p className="text-xs font-medium uppercase tracking-wide text-muted">

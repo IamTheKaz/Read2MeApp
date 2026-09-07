@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getSql } from "@/lib/db";
+import { toIsoTimestamp } from "@/lib/timestamps";
 
 export type WordFind = {
   studentName: string;
@@ -34,7 +35,7 @@ type FindRow = {
   word_text: string;
   time_ms: number;
   wrong_clicks: number;
-  found_at: string;
+  found_at: unknown;
   page_count: number;
 };
 
@@ -132,6 +133,7 @@ export const listWordFindsFn = createServerFn({ method: "POST" }).handler(
     const groups = new Map<string, StudentBookFinds>();
     for (const r of rows) {
       const key = `${r.student_name}:${r.book_id}`;
+      const foundAt = toIsoTimestamp(r.found_at);
       const find: WordFind = {
         studentName: r.student_name,
         bookId: r.book_id,
@@ -142,13 +144,13 @@ export const listWordFindsFn = createServerFn({ method: "POST" }).handler(
         wordText: r.word_text,
         timeMs: Number(r.time_ms) || 0,
         wrongClicks: Number(r.wrong_clicks) || 0,
-        foundAt: r.found_at,
+        foundAt,
       };
       const existing = groups.get(key);
       if (existing) {
         existing.finds.push(find);
         existing.wordCount += 1;
-        if (r.found_at > existing.updatedAt) existing.updatedAt = r.found_at;
+        if (foundAt > existing.updatedAt) existing.updatedAt = foundAt;
       } else {
         groups.set(key, {
           studentName: r.student_name,
@@ -156,7 +158,7 @@ export const listWordFindsFn = createServerFn({ method: "POST" }).handler(
           bookName: r.book_name,
           pageCount: Number(r.page_count) || 0,
           wordCount: 1,
-          updatedAt: r.found_at,
+          updatedAt: foundAt,
           finds: [find],
         });
       }

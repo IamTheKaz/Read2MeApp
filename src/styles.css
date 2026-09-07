@@ -123,6 +123,18 @@ button.word-box {
   border: 0;
   appearance: none;
   display: block;
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 3;
+}
+
+button.word-box:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+[data-placing="true"] {
+  cursor: crosshair;
 }
 
 .word-box[data-clickable="true"] {
