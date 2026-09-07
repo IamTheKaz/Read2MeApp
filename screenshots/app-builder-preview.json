@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Page Aloud",
+      "hasCanvas": false,
+      "bodyTextLen": 258,
+      "bodyTextHash": "25377cb9ad42e6b22289fa02fcc72fc81ff345b1b5fea5d67faf06d6f87f2fdf",
+      "bodyTextPrefix": "Page Aloud Photograph a book page, review each word, then let st",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Page Aloud",
+      "hasCanvas": false,
+      "bodyTextLen": 258,
+      "bodyTextHash": "25377cb9ad42e6b22289fa02fcc72fc81ff345b1b5fea5d67faf06d6f87f2fdf",
+      "bodyTextPrefix": "Page Aloud Photograph a book page, review each word, then let st",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}
