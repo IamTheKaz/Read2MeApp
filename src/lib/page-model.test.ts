@@ -4,7 +4,9 @@ import {
   assembledSentence,
   buildSpeechPlan,
   getSpokenWordText,
+  tokenAtTime,
   type PageWord,
+  type SpeechToken,
 } from "./page-model.ts";
 
 test("getSpokenWordText preserves punctuation from rawText", () => {
@@ -54,4 +56,17 @@ test("assembledSentence joins words with punctuation preserved", () => {
   assert.equal(plan.spoken, "I brush my teeth every morning. I put toothpaste on my brush.");
   assert.equal(plan.tokens[5].display, "morning");
   assert.equal(plan.tokens[5].speak, "morning.");
+});
+
+test("tokenAtTime maps audio clock onto tokens after duration is known", () => {
+  const tokens: SpeechToken[] = [
+    { display: "I", speak: "I", wordId: "1", start: 0, end: 1 },
+    { display: "brush", speak: "brush", wordId: "2", start: 2, end: 7 },
+    { display: "teeth", speak: "teeth", wordId: "3", start: 8, end: 13 },
+  ];
+  const duration = 13;
+  assert.equal(tokenAtTime(tokens, 0, duration)?.wordId, "1");
+  assert.equal(tokenAtTime(tokens, 2.5, duration)?.wordId, "2");
+  assert.equal(tokenAtTime(tokens, 12, duration)?.wordId, "3");
+  assert.equal(tokenAtTime(tokens, 0, 0)?.wordId, "1");
 });

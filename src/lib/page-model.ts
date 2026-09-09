@@ -228,6 +228,21 @@ export function tokenAtChar(tokens: SpeechToken[], charIndex: number): SpeechTok
   return tokens[0];
 }
 
+/** Map audio clock time onto speech tokens once duration is known (after canplaythrough). */
+export function tokenAtTime(
+  tokens: SpeechToken[],
+  currentTime: number,
+  duration: number,
+): SpeechToken | undefined {
+  if (tokens.length === 0) return undefined;
+  if (!(duration > 0) || !Number.isFinite(duration)) return tokens[0];
+  const last = tokens[tokens.length - 1];
+  const lastEnd = Math.max(last?.end ?? 1, 1);
+  const t = Math.max(0, currentTime);
+  const charPos = (t / duration) * lastEnd;
+  return tokenAtChar(tokens, charPos);
+}
+
 export function buildApprovedPage(input: {
   image: PageImage;
   words: PageWord[];
