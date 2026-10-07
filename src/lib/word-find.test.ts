@@ -1,7 +1,14 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import type { PageWord } from "./page-model.ts";
-import { clicksMatch, formatFindTime, formatWrongTries, pickTargetWords } from "./word-find.ts";
+import {
+  clicksMatch,
+  formatFindTime,
+  formatWrongTries,
+  pickTargetWords,
+  resolveFocusTargets,
+  uniqueWordTexts,
+} from "./word-find.ts";
 
 function word(id: string, text: string): PageWord {
   return {
@@ -41,4 +48,32 @@ test("format helpers match the teacher scores wording", () => {
   assert.equal(formatWrongTries(2), "2 wrong tries");
   assert.equal(formatWrongTries(0), "0 wrong tries");
   assert.equal(formatWrongTries(1), "1 wrong try");
+});
+
+test("uniqueWordTexts keeps first spelling, skips blanks and duplicates", () => {
+  assert.deepEqual(uniqueWordTexts([" Teeth ", "my", "teeth", "  ", "My"]), ["Teeth", "my"]);
+});
+
+test("resolveFocusTargets keeps teacher order and skips missing spellings", () => {
+  const words = [word("1", "I"), word("2", "brush"), word("3", "teeth"), word("4", "morning")];
+  const resolved = resolveFocusTargets(words, ["teeth", "zebra", "I", "teeth"]);
+  assert.deepEqual(
+    resolved.map((w) => w.text),
+    ["teeth", "I"],
+  );
+});
+
+test("pickTargetWords uses focus list when it matches the page", () => {
+  const words = [word("1", "I"), word("2", "brush"), word("3", "teeth"), word("4", "morning")];
+  const picked = pickTargetWords(words, () => 0.9, ["brush", "morning"]);
+  assert.deepEqual(
+    picked.map((w) => w.text),
+    ["brush", "morning"],
+  );
+});
+
+test("pickTargetWords falls back to random when no focus word is on the page", () => {
+  const words = [word("1", "Hi"), word("2", "there")];
+  const picked = pickTargetWords(words, () => 0, ["zebra"]);
+  assert.equal(picked.length, 2);
 });

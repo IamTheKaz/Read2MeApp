@@ -30,6 +30,7 @@ type BookStore = {
   persistError: string | null;
   activeBookId: string | null;
   hydrate: () => void;
+  reload: () => Promise<void>;
   createBook: (name: string) => string;
   deleteBook: (id: string) => void;
   openBook: (id: string) => void;
@@ -59,11 +60,16 @@ export const useBookStore = create<BookStore>((set, get) => ({
 
   hydrate: () => {
     if (get().hydrated || typeof window === "undefined") return;
-    void fetchBooks()
-      .then((books) => set({ books, hydrated: true, persistError: null }))
-      .catch(() =>
-        set({ persistError: "Couldn't load your books. Is the app running?", hydrated: true }),
-      );
+    void get().reload().then(() => set({ hydrated: true }));
+  },
+
+  reload: async () => {
+    try {
+      const books = await fetchBooks();
+      set({ books, persistError: null });
+    } catch {
+      set({ persistError: "Couldn't load your books. Is the app running?" });
+    }
   },
 
   createBook: (name) => {

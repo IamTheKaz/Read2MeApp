@@ -24,6 +24,7 @@ function makePage(overrides: Partial<BookPage> = {}): BookPage {
     hasPreviewed: false,
     approved: false,
     approvedAt: null,
+    focusTexts: [],
     ...overrides,
   };
 }
@@ -115,4 +116,10 @@ test("books round-trip through serialize/parse and reject junk", () => {
   );
   assert.equal(partial.length, 1);
   assert.equal(partial[0].pages.length, 1);
+});
+
+test("parseBooks keeps teacher focus words and drops empty ones", () => {
+  const page = makePage({ focusTexts: ["teeth", "  ", "My"] });
+  const restored = parseBooks(serializeBooks([makeBook([page])]));
+  assert.deepEqual(restored[0]?.pages[0]?.focusTexts, ["teeth", "My"]);
 });

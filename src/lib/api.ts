@@ -2,14 +2,20 @@ import type { Book, BookPage } from "@/lib/book-model";
 import type { StudentBookFinds } from "@/server/scores";
 import {
   createBookFn,
+  deleteAllBooksFn,
   deleteBookFn,
   listBooks,
   removePageFn,
   setPageOrderFn,
   upsertPageFn,
 } from "@/server/books";
-import { listWordFindsFn, recordWordFindFn } from "@/server/scores";
-import { getTeacherStatus, setTeacherPassword, verifyTeacherPassword } from "@/server/teacher";
+import { clearWordFindsFn, listWordFindsFn, recordWordFindFn } from "@/server/scores";
+import {
+  getTeacherStatus,
+  resetTeacherPasswordFn,
+  setTeacherPassword,
+  verifyTeacherPassword,
+} from "@/server/teacher";
 
 export function fetchBooks(): Promise<Book[]> {
   return listBooks();
@@ -35,6 +41,10 @@ export function apiDeleteBook(bookId: string) {
   return deleteBookFn({ data: { bookId } });
 }
 
+export function apiDeleteAllBooks(password: string) {
+  return deleteAllBooksFn({ data: { password } });
+}
+
 export function fetchTeacherStatus(): Promise<{ hasPassword: boolean }> {
   return getTeacherStatus();
 }
@@ -47,8 +57,16 @@ export function apiVerifyTeacherPassword(password: string) {
   return verifyTeacherPassword({ data: { password } });
 }
 
+export function apiResetTeacherPassword(currentPassword: string, newPassword: string) {
+  return resetTeacherPasswordFn({ data: { currentPassword, newPassword } });
+}
+
 export function fetchWordFinds(): Promise<StudentBookFinds[]> {
   return listWordFindsFn();
+}
+
+export function apiClearWordFinds(password: string) {
+  return clearWordFindsFn({ data: { password } });
 }
 
 export function apiRecordWordFind(input: {

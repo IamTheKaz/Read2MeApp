@@ -22,11 +22,13 @@ export function TeacherApp() {
   const editorMode = usePageStore((s) => s.editorMode);
   const showOrderEditor = usePageStore((s) => s.showOrderEditor);
   const placingWord = usePageStore((s) => s.placingWord);
+  const pickingFocus = usePageStore((s) => s.pickingFocus);
   const playback = usePageStore((s) => s.playback);
   const selectWord = usePageStore((s) => s.selectWord);
   const stopPlayback = usePageStore((s) => s.stopPlayback);
   const setShowOrderEditor = usePageStore((s) => s.setShowOrderEditor);
   const setPlacingWord = usePageStore((s) => s.setPlacingWord);
+  const setPickingFocus = usePageStore((s) => s.setPickingFocus);
   const activeBook = useActiveBook();
   const hydrate = useBookStore((s) => s.hydrate);
   const [view, setView] = useState<"books" | "scores">("books");
@@ -43,10 +45,11 @@ export function TeacherApp() {
       selectWord(null, false);
       setShowOrderEditor(false);
       setPlacingWord(false);
+      setPickingFocus(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectWord, setPlacingWord, setShowOrderEditor, stopPlayback]);
+  }, [selectWord, setPickingFocus, setPlacingWord, setShowOrderEditor, stopPlayback]);
 
   const editorOpen = Boolean(activeBook && image);
 
@@ -69,7 +72,9 @@ export function TeacherApp() {
           ? `Add a page to “${activeBook.name}”`
           : placingWord
             ? "Tap the page to add a missed word"
-            : showOrderEditor
+            : pickingFocus
+              ? "Tap words the student should find"
+              : showOrderEditor
             ? "Fixing reading order"
             : selectedId && editorMode === "pronunciation"
               ? "Fixing pronunciation"

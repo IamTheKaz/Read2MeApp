@@ -1,6 +1,7 @@
 import { useMemo, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { LoaderCircle } from "lucide-react";
 import { WordPopover } from "@/components/word-popover";
+import { isFocusText } from "@/lib/word-find";
 import { usePageStore } from "@/store/page-store";
 
 export function PageCanvas() {
@@ -11,6 +12,8 @@ export function PageCanvas() {
   const playback = usePageStore((s) => s.playback);
   const editorMode = usePageStore((s) => s.editorMode);
   const placingWord = usePageStore((s) => s.placingWord);
+  const pickingFocus = usePageStore((s) => s.pickingFocus);
+  const focusTexts = usePageStore((s) => s.focusTexts);
   const selectWord = usePageStore((s) => s.selectWord);
   const addWordAt = usePageStore((s) => s.addWordAt);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -38,7 +41,7 @@ export function PageCanvas() {
 
   function pointOnImage(event: ReactPointerEvent) {
     const el = imgRef.current;
-    if (!el || image.width <= 0) return null;
+    if (!el || !image || image.width <= 0) return null;
     const rect = el.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
     return {
@@ -52,6 +55,7 @@ export function PageCanvas() {
       <div
         className="relative inline-block max-w-full touch-manipulation select-none"
         data-placing={placingWord ? "true" : "false"}
+        data-picking-focus={pickingFocus ? "true" : "false"}
         onPointerDown={(event) => {
           if (running) return;
           if (placingWord) {
@@ -79,9 +83,10 @@ export function PageCanvas() {
             const top = (word.bbox.y0 / image.height) * 100;
             const width = ((word.bbox.x1 - word.bbox.x0) / image.width) * 100;
             const height = ((word.bbox.y1 - word.bbox.y0) / image.height) * 100;
-            const selectedBox = word.id === selectedId;
+            const selectedBox = word.id === selectedId && !pickingFocus;
             const karaoke = playback.kind === "sentence" && playback.wordId === word.id;
             const wordPlay = playback.kind === "word" && playback.wordId === word.id;
+            const focused = isFocusText(focusTexts, word.text);
             return (
               <button
                 key={word.id}
@@ -92,6 +97,7 @@ export function PageCanvas() {
                 data-confirmed={word.confirmed ? "true" : "false"}
                 data-selected={selectedBox ? "true" : "false"}
                 data-karaoke={karaoke || wordPlay ? "true" : "false"}
+                data-focus={focused ? "true" : "false"}
                 aria-label={`Word: ${word.text || "new word"}`}
                 onPointerDown={(event) => {
                   event.stopPropagation();
@@ -102,7 +108,7 @@ export function PageCanvas() {
             );
           })}
 
-        {selected && image.width > 0 && (
+        {selected && image.width > 0 && !pickingFocus && (
           <>
             <div
               className="fixed inset-0 z-30 bg-fg/30 sm:hidden"
@@ -148,7 +154,14 @@ export function PageCanvas() {
         </p>
       )}
 
-      {selected && !placingWord && (
+      {pickingFocus && !placingWord && (
+        <p className="mt-3 text-sm text-muted">
+          Tap words the student should find. Chosen words glow on the page. Leave the list empty to
+          pick 3–5 at random.
+        </p>
+      )}
+
+      {selected && !placingWord && !pickingFocus && (
         <p className="mt-3 text-sm text-muted">
           {editorMode === "pronunciation" ? (
             <>

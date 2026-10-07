@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, ChevronDown, ChevronRight, Search, Users } from "lucide-react";
+import { TeacherAdmin } from "@/components/teacher-admin";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { fetchWordFinds } from "@/lib/api";
@@ -19,6 +20,13 @@ export function ScoresView({ onBack }: { onBack: () => void }) {
   }, []);
 
   const studentCount = scores ? new Set(scores.map((s) => s.studentName)).size : 0;
+
+  function refresh() {
+    setError(false);
+    void fetchWordFinds()
+      .then(setScores)
+      .catch(() => setError(true));
+  }
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -96,6 +104,8 @@ export function ScoresView({ onBack }: { onBack: () => void }) {
           </ul>
         </>
       )}
+
+      <TeacherAdmin onChanged={refresh} />
     </div>
   );
 }

@@ -1,6 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getSql } from "@/lib/db";
-import { hashPassword, verifyPassword } from "@/lib/password.server";
 
 const TEACHER_KEY = "teacher";
 
@@ -27,7 +26,8 @@ export const setTeacherPassword = createServerFn({ method: "POST" })
     const sql = await getSql();
     const existing = await sql<ConfigRow>`select password_hash from app_config where id = ${TEACHER_KEY}`;
     if (existing[0]?.password_hash) return { ok: false, alreadySet: true };
-    const { hash, salt } = hashPassword(data.password);
+    const { hashTeacherPassword } = await import("@/server/teacher-auth.server");
+    const { hash, salt } = hashTeacherPassword(data.password);
     await sql`
       insert into app_config (id, password_hash, salt, updated_at)
       values (${TEACHER_KEY}, ${hash}, ${salt}, now())
@@ -43,9 +43,37 @@ export const verifyTeacherPassword = createServerFn({ method: "POST" })
     return { password: input.password };
   })
   .handler(async ({ data }): Promise<{ ok: boolean }> => {
+    const { checkTeacherPassword } = await import("@/server/teacher-auth.server");
+    return { ok: await checkTeacherPassword(data.password) };
+  });
+
+/** Replace the existing teacher password. Requires the current password. */
+export const resetTeacherPasswordFn = createServerFn({ method: "POST" })
+  .validator((input: { currentPassword: string; newPassword: string }) => {
+    if (typeof input?.currentPassword !== "string" || !input.currentPassword) {
+      throw new Error("Current password required.");
+    }
+    if (typeof input?.newPassword !== "string" || input.newPassword.trim().length < 4) {
+      throw new Error("Choose a password of at least 4 characters.");
+    }
+    return {
+      currentPassword: input.currentPassword,
+      newPassword: input.newPassword.trim(),
+    };
+  })
+  .handler(async ({ data }): Promise<{ ok: boolean; reason?: "auth" }> => {
+    const { checkTeacherPassword, hashTeacherPassword } = await import(
+      "@/server/teacher-auth.server"
+    );
     const sql = await getSql();
-    const rows = await sql<ConfigRow>`select password_hash, salt from app_config where id = ${TEACHER_KEY}`;
-    const row = rows[0];
-    if (!row?.password_hash || !row.salt) return { ok: false };
-    return { ok: verifyPassword(data.password, row.salt, row.password_hash) };
+    if (!(await checkTeacherPassword(data.currentPassword))) {
+      return { ok: false, reason: "auth" };
+    }
+    const { hash, salt } = hashTeacherPassword(data.newPassword);
+    await sql`
+      insert into app_config (id, password_hash, salt, updated_at)
+      values (${TEACHER_KEY}, ${hash}, ${salt}, now())
+      on conflict (id) do update set password_hash = ${hash}, salt = ${salt}, updated_at = now()
+    `;
+    return { ok: true };
   });

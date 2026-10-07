@@ -1,12 +1,15 @@
-import { Check, ListOrdered, Play, Plus, Square, Volume2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { Check, ImagePlus, ListOrdered, Play, Plus, Square, Target, Volume2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   assembledSentence,
   buildSpeechPlan,
+  normalizeToken,
 } from "@/lib/page-model";
 import { cn } from "@/lib/utils";
+import { resolveFocusTargets } from "@/lib/word-find";
 import { useActiveBook } from "@/store/book-store";
 import { usePageStore } from "@/store/page-store";
 
@@ -35,7 +38,16 @@ export function ReviewSidebar() {
   const placingWord = usePageStore((s) => s.placingWord);
   const setPlacingWord = usePageStore((s) => s.setPlacingWord);
   const selectWord = usePageStore((s) => s.selectWord);
+  const focusTexts = usePageStore((s) => s.focusTexts);
+  const pickingFocus = usePageStore((s) => s.pickingFocus);
+  const setPickingFocus = usePageStore((s) => s.setPickingFocus);
+  const setFocusTexts = usePageStore((s) => s.setFocusTexts);
+  const toggleFocusText = usePageStore((s) => s.toggleFocusText);
+  const loadFocusImage = usePageStore((s) => s.loadFocusImage);
   const activeBook = useActiveBook();
+  const focusFileRef = useRef<HTMLInputElement>(null);
+  const [focusBusy, setFocusBusy] = useState(false);
+  const [focusNote, setFocusNote] = useState<string | null>(null);
 
   if (!image) return null;
 
@@ -44,6 +56,28 @@ export function ReviewSidebar() {
   const plan = buildSpeechPlan(words, layout, image.width, sentenceOverride);
   const autoSentence = assembledSentence(words, layout, image.width);
   const ready = words.length > 0 && ocr.status === "done";
+  const matchedFocus = resolveFocusTargets(words, focusTexts);
+  const usingFocus = focusTexts.length > 0;
+
+  async function onFocusImage(file: File | undefined) {
+    if (!file || !file.type.startsWith("image/")) return;
+    setFocusBusy(true);
+    setFocusNote(null);
+    try {
+      const result = await loadFocusImage(file);
+      setFocusNote(
+        result.total === 0
+          ? "No words found on that photo."
+          : result.matched === result.total
+            ? `Using ${result.matched} word${result.matched === 1 ? "" : "s"} from the photo.`
+            : `Found ${result.total} words; ${result.matched} match this page.`,
+      );
+    } catch {
+      setFocusNote("Couldn't read that photo.");
+    } finally {
+      setFocusBusy(false);
+    }
+  }
 
   return (
     <aside className="flex flex-col gap-4">
@@ -172,6 +206,101 @@ export function ReviewSidebar() {
           )}
         </section>
       )}
+
+      <section className="rounded-xl bg-surface p-4 shadow-border">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-display text-lg font-medium tracking-tight">Find-the-word game</h3>
+          <Badge variant="outline">{usingFocus ? "Chosen words" : "Random"}</Badge>
+        </div>
+        <p className="mt-1 text-sm text-muted">
+          Students find these after they listen. Leave it random, tap words on the page, or upload a
+          photo of the focus list.
+        </p>
+
+        <div className="mt-3 grid grid-cols-2 rounded-sm bg-bg-sunken p-1">
+          <button
+            type="button"
+            className={cn(
+              "h-9 rounded-xs text-sm font-medium",
+              !usingFocus ? "bg-surface text-fg shadow-border" : "text-muted",
+            )}
+            onClick={() => {
+              setFocusTexts([]);
+              setPickingFocus(false);
+              setFocusNote(null);
+            }}
+            disabled={!ready}
+          >
+            Random 3–5
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "h-9 rounded-xs text-sm font-medium",
+              usingFocus ? "bg-surface text-fg shadow-border" : "text-muted",
+            )}
+            onClick={() => setPickingFocus(true)}
+            disabled={!ready}
+          >
+            Choose words
+          </button>
+        </div>
+
+        {usingFocus && (
+          <ul className="mt-3 flex flex-wrap gap-1.5">
+            {focusTexts.map((text) => {
+              const onPage = matchedFocus.some((w) => normalizeToken(w.text) === normalizeToken(text));
+              return (
+                <li key={text}>
+                  <button
+                    type="button"
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
+                      onPage ? "bg-primary-soft text-primary" : "bg-danger-soft text-danger",
+                    )}
+                    onClick={() => toggleFocusText(text)}
+                    aria-label={`Remove ${text}`}
+                  >
+                    {text}
+                    {!onPage && <span className="font-normal opacity-80">not on page</span>}
+                    <X className="size-3" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <div className="mt-3 flex flex-col gap-2">
+          <Button
+            variant={pickingFocus ? "secondary" : "outline"}
+            onClick={() => setPickingFocus(!pickingFocus)}
+            disabled={!ready}
+          >
+            <Target />
+            {pickingFocus ? "Tapping adds a game word" : "Tap words on the page"}
+          </Button>
+          <Button
+            variant="outline"
+            disabled={!ready || focusBusy}
+            onClick={() => focusFileRef.current?.click()}
+          >
+            <ImagePlus />
+            {focusBusy ? "Reading photo…" : "Upload a photo of the focus words"}
+          </Button>
+          <input
+            ref={focusFileRef}
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={(event) => {
+              void onFocusImage(event.target.files?.[0]);
+              event.target.value = "";
+            }}
+          />
+        </div>
+        {focusNote && <p className="mt-2 text-xs text-muted">{focusNote}</p>}
+      </section>
 
       <section className="rounded-xl bg-surface p-4 shadow-border">
         <h3 className="font-display text-lg font-medium tracking-tight">Approve page</h3>

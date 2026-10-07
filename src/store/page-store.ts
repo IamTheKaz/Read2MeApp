@@ -1,13 +1,9 @@
 import { create } from "zustand";
-import {
-  assembledSentence,
-  buildSpeechPlan,
-  type PageImage,
-  type PageLayout,
-  type PageWord,
-} from "@/lib/page-model";
+import { assembledSentence, buildSpeechPlan, normalizeToken, type PageImage, type PageLayout, type PageWord } from "@/lib/page-model";
 import { detectWords, fileToDataUrl, samplePageDataUrl } from "@/lib/ocr";
+import { pdfFileToImages } from "@/lib/pdf-pages";
 import { canSpeak, cancelSpeech, speakText } from "@/lib/tts";
+import { uniqueWordTexts } from "@/lib/word-find";
 import { useBookStore } from "@/store/book-store";
 
 export type EditorMode = "spelling" | "pronunciation";
@@ -19,6 +15,11 @@ export type OcrState = {
 export type PlaybackState = {
   kind: "idle" | "word" | "sentence";
   wordId: string | null;
+};
+export type ImportJob = {
+  status: "idle" | "running" | "error";
+  message: string;
+  progress: number;
 };
 
 type PageStore = {
@@ -35,14 +36,22 @@ type PageStore = {
   showOrderEditor: boolean;
   orderDraft: string;
   placingWord: boolean;
+  pickingFocus: boolean;
+  focusTexts: string[];
   ocr: OcrState;
   playback: PlaybackState;
+  importJob: ImportJob;
   hasPreviewed: boolean;
   approved: boolean;
   approvedAt: string | null;
   ttsAvailable: boolean;
   loadFile: (file: File) => Promise<void>;
   loadSample: () => Promise<void>;
+  importPdf: (file: File) => Promise<void>;
+  loadFocusImage: (file: File) => Promise<{ matched: number; total: number }>;
+  setFocusTexts: (texts: string[]) => void;
+  toggleFocusText: (text: string) => void;
+  setPickingFocus: (on: boolean) => void;
   reset: () => void;
   /** Start a fresh, empty page inside a book (shows the upload panel). */
   beginBookPage: (bookId: string) => void;
@@ -69,6 +78,7 @@ type PageStore = {
 };
 
 const idleOcr: OcrState = { status: "idle", progress: 0, message: "" };
+const idleImport: ImportJob = { status: "idle", message: "", progress: 0 };
 
 /** Give the upcoming upload a page id so it syncs into the active book. */
 function mintPageIdForBook(
@@ -95,6 +105,8 @@ async function runOcr(src: string, name: string, set: (partial: Partial<PageStor
     showOrderEditor: false,
     orderDraft: "",
     placingWord: false,
+    pickingFocus: false,
+    focusTexts: [],
     ocr: { status: "running", progress: 0.02, message: "Opening the page image" },
     playback: { kind: "idle", wordId: null },
     hasPreviewed: false,
@@ -144,8 +156,11 @@ export const usePageStore = create<PageStore>((set, get) => ({
   showOrderEditor: false,
   orderDraft: "",
   placingWord: false,
+  pickingFocus: false,
+  focusTexts: [],
   ocr: idleOcr,
   playback: { kind: "idle", wordId: null },
+  importJob: idleImport,
   hasPreviewed: false,
   approved: false,
   approvedAt: null,
@@ -163,6 +178,113 @@ export const usePageStore = create<PageStore>((set, get) => ({
     await runOcr(sample.src, sample.name, set);
   },
 
+  importPdf: async (file) => {
+    const bookId = get().bookId;
+    if (!bookId) throw new Error("Open a book first.");
+    cancelSpeech();
+    set({
+      importJob: { status: "running", message: "Opening PDF", progress: 0.04 },
+      placingWord: false,
+      pickingFocus: false,
+    });
+    try {
+      const { pages, truncated, totalInFile } = await pdfFileToImages(file, ({ page, total }) => {
+        set({
+          importJob: {
+            status: "running",
+            message: `Reading PDF page ${page} of ${total}`,
+            progress: 0.05 + 0.2 * (page / Math.max(total, 1)),
+          },
+        });
+      });
+      if (pages.length === 0) throw new Error("That PDF has no pages.");
+      const created: string[] = [];
+      for (let i = 0; i < pages.length; i += 1) {
+        const img = pages[i]!;
+        set({
+          importJob: {
+            status: "running",
+            message: `Finding words on page ${i + 1} of ${pages.length}`,
+            progress: 0.28 + 0.7 * (i / pages.length),
+          },
+        });
+        const result = await detectWords(img.src);
+        const pageId = crypto.randomUUID();
+        created.push(pageId);
+        useBookStore.getState().upsertPage(bookId, {
+          id: pageId,
+          createdAt: new Date().toISOString(),
+          image: { name: img.name, src: img.src, width: result.width, height: result.height },
+          words: result.words,
+          layout: "single",
+          sentenceOverride: null,
+          hasPreviewed: false,
+          approved: false,
+          approvedAt: null,
+          focusTexts: [],
+        });
+      }
+      const note = truncated
+        ? `Imported the first ${pages.length} of ${totalInFile} pages.`
+        : `Imported ${pages.length} page${pages.length === 1 ? "" : "s"}.`;
+      set({ importJob: { status: "idle", message: note, progress: 1 } });
+      const first = created[0];
+      if (first) get().openBookPage(bookId, first);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not import that PDF.";
+      set({ importJob: { status: "error", message, progress: 0 } });
+    }
+  },
+
+  loadFocusImage: async (file) => {
+    const src = await fileToDataUrl(file);
+    const result = await detectWords(src);
+    const texts = uniqueWordTexts(result.words.map((w) => w.text));
+    const pageKeys = new Set(get().words.map((w) => normalizeToken(w.text)).filter(Boolean));
+    const matched = texts.filter((t) => pageKeys.has(normalizeToken(t))).length;
+    set({
+      focusTexts: texts,
+      pickingFocus: true,
+      placingWord: false,
+      selectedId: null,
+      approved: false,
+      approvedAt: null,
+    });
+    return { matched, total: texts.length };
+  },
+
+  setFocusTexts: (texts) => {
+    set({
+      focusTexts: uniqueWordTexts(texts),
+      approved: false,
+      approvedAt: null,
+    });
+  },
+
+  toggleFocusText: (text) => {
+    const key = normalizeToken(text);
+    if (!key) return;
+    const current = get().focusTexts;
+    const exists = current.some((t) => normalizeToken(t) === key);
+    const next = exists
+      ? current.filter((t) => normalizeToken(t) !== key)
+      : uniqueWordTexts([...current, text]);
+    set({
+      focusTexts: next,
+      approved: false,
+      approvedAt: null,
+    });
+  },
+
+  setPickingFocus: (on) => {
+    set({
+      pickingFocus: on,
+      placingWord: on ? false : get().placingWord,
+      selectedId: on ? null : get().selectedId,
+      showOrderEditor: on ? false : get().showOrderEditor,
+    });
+  },
+
   reset: () => {
     cancelSpeech();
     set({
@@ -177,8 +299,11 @@ export const usePageStore = create<PageStore>((set, get) => ({
       showOrderEditor: false,
       orderDraft: "",
       placingWord: false,
+      pickingFocus: false,
+      focusTexts: [],
       ocr: idleOcr,
       playback: { kind: "idle", wordId: null },
+      importJob: idleImport,
       hasPreviewed: false,
       approved: false,
       approvedAt: null,
@@ -199,8 +324,11 @@ export const usePageStore = create<PageStore>((set, get) => ({
       showOrderEditor: false,
       orderDraft: "",
       placingWord: false,
+      pickingFocus: false,
+      focusTexts: [],
       ocr: idleOcr,
       playback: { kind: "idle", wordId: null },
+      importJob: idleImport,
       hasPreviewed: false,
       approved: false,
       approvedAt: null,
@@ -224,6 +352,8 @@ export const usePageStore = create<PageStore>((set, get) => ({
       showOrderEditor: false,
       orderDraft: "",
       placingWord: false,
+      pickingFocus: false,
+      focusTexts: page.focusTexts ?? [],
       ocr: {
         status: "done",
         progress: 1,
@@ -253,6 +383,15 @@ export const usePageStore = create<PageStore>((set, get) => ({
   },
 
   selectWord: (id, play = true) => {
+    if (get().pickingFocus) {
+      if (!id) {
+        set({ selectedId: null });
+        return;
+      }
+      const word = get().words.find((w) => w.id === id);
+      if (word?.text.trim()) get().toggleFocusText(word.text);
+      return;
+    }
     if (!id) {
       set({ selectedId: null });
       return;
@@ -296,7 +435,11 @@ export const usePageStore = create<PageStore>((set, get) => ({
   },
 
   setPlacingWord: (on) => {
-    set({ placingWord: on, selectedId: on ? null : get().selectedId });
+    set({
+      placingWord: on,
+      pickingFocus: on ? false : get().pickingFocus,
+      selectedId: on ? null : get().selectedId,
+    });
   },
 
   addWordAt: (point) => {
@@ -462,7 +605,8 @@ usePageStore.subscribe((state, prev) => {
     state.sentenceOverride === prev.sentenceOverride &&
     state.hasPreviewed === prev.hasPreviewed &&
     state.approved === prev.approved &&
-    state.approvedAt === prev.approvedAt
+    state.approvedAt === prev.approvedAt &&
+    state.focusTexts === prev.focusTexts
   ) {
     return;
   }
@@ -478,5 +622,6 @@ usePageStore.subscribe((state, prev) => {
     hasPreviewed: state.hasPreviewed,
     approved: state.approved,
     approvedAt: state.approvedAt,
+    focusTexts: state.focusTexts,
   });
 });

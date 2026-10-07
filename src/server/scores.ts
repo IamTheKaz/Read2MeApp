@@ -171,3 +171,20 @@ export const listWordFindsFn = createServerFn({ method: "POST" }).handler(
     });
   },
 );
+
+/** Teacher-gated wipe of every word-find and leftover whole-book score row. */
+export const clearWordFindsFn = createServerFn({ method: "POST" })
+  .validator((input: { password: string }) => {
+    if (typeof input?.password !== "string" || !input.password) {
+      throw new Error("Password required.");
+    }
+    return { password: input.password };
+  })
+  .handler(async ({ data }): Promise<{ ok: boolean; reason?: "auth" }> => {
+    const { checkTeacherPassword } = await import("@/server/teacher-auth.server");
+    if (!(await checkTeacherPassword(data.password))) return { ok: false, reason: "auth" };
+    const sql = await getSql();
+    await sql`delete from word_finds`;
+    await sql`delete from student_scores`;
+    return { ok: true };
+  });

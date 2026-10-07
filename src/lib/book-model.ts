@@ -16,6 +16,8 @@ export type BookPage = {
   hasPreviewed: boolean;
   approved: boolean;
   approvedAt: string | null;
+  /** Teacher-chosen find-the-word targets. Empty = pick 3–5 at random. */
+  focusTexts: string[];
 };
 
 export type Book = {
@@ -99,6 +101,12 @@ function parsePage(value: unknown): BookPage | null {
     hasPreviewed: Boolean(value.hasPreviewed),
     approved: Boolean(value.approved),
     approvedAt: typeof value.approvedAt === "string" ? value.approvedAt : null,
+    focusTexts: Array.isArray(value.focusTexts)
+      ? value.focusTexts
+          .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+          .map((t) => t.trim())
+          .slice(0, 12)
+      : [],
   };
 }
 

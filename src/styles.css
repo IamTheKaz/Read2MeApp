@@ -149,6 +149,15 @@ button.word-box:disabled {
   box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--color-primary) 70%, transparent);
 }
 
+.word-box[data-focus="true"] {
+  background: color-mix(in oklab, var(--color-primary) 22%, transparent);
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+}
+
+[data-picking-focus="true"] {
+  cursor: pointer;
+}
+
 .word-box[data-found="true"] {
   background: color-mix(in oklab, var(--color-primary) 34%, transparent);
   box-shadow: inset 0 0 0 2px var(--color-primary);

@@ -1,9 +1,12 @@
-import { useState } from "react";
-import { BookOpen, ChevronRight, Plus, TriangleAlert, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { BookOpen, ChevronRight, FileText, Plus, TriangleAlert, Trash2 } from "lucide-react";
+import { TeacherAdmin } from "@/components/teacher-admin";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { bookStats, type Book } from "@/lib/book-model";
+import { bookNameFromPdf, MAX_PDF_PAGES } from "@/lib/pdf-pages";
+import { cn } from "@/lib/utils";
 import { useBookStore } from "@/store/book-store";
 import { usePageStore } from "@/store/page-store";
 
@@ -18,7 +21,14 @@ export function LibraryView() {
   const beginBookPage = usePageStore((s) => s.beginBookPage);
   const openBookPage = usePageStore((s) => s.openBookPage);
   const resetEditor = usePageStore((s) => s.reset);
+  const importPdf = usePageStore((s) => s.importPdf);
+  const importJob = usePageStore((s) => s.importJob);
   const [name, setName] = useState("");
+  const pdfRef = useRef<HTMLInputElement>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+
+  const importing = importJob.status === "running" || pdfBusy;
 
   function handleCreate() {
     const trimmed = name.trim();
@@ -26,6 +36,20 @@ export function LibraryView() {
     const id = createBook(trimmed);
     setName("");
     beginBookPage(id);
+  }
+
+  async function handlePdf(file: File | undefined) {
+    if (!file) return;
+    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+    if (!isPdf) return;
+    setPdfBusy(true);
+    try {
+      const id = createBook(bookNameFromPdf(file));
+      beginBookPage(id);
+      await importPdf(file);
+    } finally {
+      setPdfBusy(false);
+    }
   }
 
   function handleOpen(book: Book) {
@@ -52,7 +76,8 @@ export function LibraryView() {
       <section className="rounded-2xl bg-surface p-4 shadow-border sm:p-5">
         <h2 className="font-display text-xl font-medium tracking-tight">Start a new book</h2>
         <p className="mt-1 text-sm text-muted">
-          Name it now, add pages one photo at a time — drafts are fine, you can finish later.
+          Name it and add pages one photo at a time, or import a whole PDF. Drafts are fine — you can
+          finish later.
         </p>
         <form
           className="mt-4 flex flex-col gap-2 sm:flex-row"
@@ -67,12 +92,69 @@ export function LibraryView() {
             placeholder="e.g. The Hungry Caterpillar, Week 3 reader"
             aria-label="Book name"
             maxLength={80}
+            disabled={importing}
           />
-          <Button type="submit" disabled={!name.trim()} className="shrink-0">
+          <Button type="submit" disabled={!name.trim() || importing} className="shrink-0">
             <Plus />
             Create book
           </Button>
         </form>
+
+        <div
+          className={cn(
+            "mt-4 rounded-xl bg-bg-sunken p-4 transition-[background-color] duration-150",
+            dragOver && "bg-primary-soft",
+          )}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragOver(false);
+            void handlePdf(event.dataTransfer.files[0]);
+          }}
+        >
+          <p className="text-sm font-medium">Or upload a PDF of the whole book</p>
+          <p className="mt-1 text-xs text-muted">
+            Each PDF page becomes a draft (up to {MAX_PDF_PAGES}). Review words, then approve.
+          </p>
+          {importing && (
+            <div className="mt-3">
+              <p className="text-sm text-primary">{importJob.message || "Importing PDF…"}</p>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface">
+                <div
+                  className="h-full bg-primary transition-[width] duration-200"
+                  style={{ width: `${Math.round(Math.min(1, importJob.progress) * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
+          {importJob.status === "error" && (
+            <p className="mt-3 text-sm text-danger">{importJob.message}</p>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-3 w-full bg-surface sm:w-auto"
+            disabled={importing}
+            onClick={() => pdfRef.current?.click()}
+          >
+            <FileText />
+            {importing ? "Importing PDF…" : "Choose PDF"}
+          </Button>
+          <input
+            ref={pdfRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            className="sr-only"
+            onChange={(event) => {
+              void handlePdf(event.target.files?.[0]);
+              event.target.value = "";
+            }}
+          />
+        </div>
       </section>
 
       {persistError && (
@@ -93,8 +175,8 @@ export function LibraryView() {
             </span>
             <p className="mt-4 font-display text-lg font-medium tracking-tight">No books yet</p>
             <p className="mt-1 max-w-sm text-sm text-muted">
-              Create your first book above, then photograph pages into it. Each page is reviewed
-              and approved on its own — a half-finished book still opens fine.
+              Create a book above or import a PDF. Each page is reviewed and approved on its own — a
+              half-finished book still opens fine.
             </p>
           </div>
         ) : (
@@ -125,11 +207,7 @@ export function LibraryView() {
                     <Badge variant="outline">
                       {stats.pages} page{stats.pages === 1 ? "" : "s"}
                     </Badge>
-                    {stats.approved > 0 && (
-                      <Badge>
-                        {stats.approved} approved
-                      </Badge>
-                    )}
+                    {stats.approved > 0 && <Badge>{stats.approved} approved</Badge>}
                     {stats.drafts > 0 && (
                       <Badge variant="muted">
                         {stats.drafts} draft{stats.drafts === 1 ? "" : "s"}
@@ -146,6 +224,8 @@ export function LibraryView() {
           </ul>
         )}
       </section>
+
+      <TeacherAdmin />
     </div>
   );
 }

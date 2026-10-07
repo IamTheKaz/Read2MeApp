@@ -7,6 +7,7 @@ type PageRow = { id: string; position: number; created_at: string; payload: Book
 
 const DEMO_BOOK_ID = "demo-teeth-book";
 const DEMO_PAGE_ID = "demo-teeth-page";
+const DEMO_OPT_OUT = "demo_opt_out";
 
 /** Sample spread from /sample-page.png (1600×1000) so student mode is playable on a fresh DB. */
 function demoPage(): BookPage {
@@ -42,11 +43,14 @@ function demoPage(): BookPage {
     hasPreviewed: true,
     approved: true,
     approvedAt: new Date(0).toISOString(),
+    focusTexts: [],
   };
 }
 
 async function ensureDemoBook() {
   const sql = await getSql();
+  const skip = await sql<{ id: string }>`select id from app_config where id = ${DEMO_OPT_OUT}`;
+  if (skip[0]) return;
   const existing = await sql<{ id: string }>`select id from books limit 1`;
   if (existing[0]) return;
   const page = demoPage();
@@ -177,5 +181,26 @@ export const deleteBookFn = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ ok: true }> => {
     const sql = await getSql();
     await sql`delete from books where id = ${data.bookId}`;
+    return { ok: true };
+  });
+
+/** Teacher-gated wipe of every book and page. Scores for those books cascade. */
+export const deleteAllBooksFn = createServerFn({ method: "POST" })
+  .validator((input: { password: string }) => {
+    if (typeof input?.password !== "string" || !input.password) {
+      throw new Error("Password required.");
+    }
+    return { password: input.password };
+  })
+  .handler(async ({ data }): Promise<{ ok: boolean; reason?: "auth" }> => {
+    const { checkTeacherPassword } = await import("@/server/teacher-auth.server");
+    if (!(await checkTeacherPassword(data.password))) return { ok: false, reason: "auth" };
+    const sql = await getSql();
+    await sql`delete from books`;
+    await sql`
+      insert into app_config (id, updated_at)
+      values (${DEMO_OPT_OUT}, now())
+      on conflict (id) do update set updated_at = now()
+    `;
     return { ok: true };
   });

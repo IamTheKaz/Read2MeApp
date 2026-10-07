@@ -5,6 +5,7 @@ import {
   BookOpen,
   ChevronLeft,
   ChevronRight,
+  PartyPopper,
   Play,
   Repeat2,
   Search,
@@ -12,6 +13,14 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import type { Book, BookPage } from "@/lib/book-model";
 import { apiRecordWordFind, fetchBooks } from "@/lib/api";
@@ -43,6 +52,7 @@ export function StudentApp() {
   const [playing, setPlaying] = useState(false);
   const [activeWordId, setActiveWordId] = useState<string | null>(null);
   const [round, setRound] = useState<FindRound | null>(null);
+  const [splash, setSplash] = useState<null | "page" | "book">(null);
   const roundRef = useRef<FindRound | null>(null);
   const speechGen = useRef(0);
   const missTimer = useRef<number | null>(null);
@@ -64,8 +74,6 @@ export function StudentApp() {
     () => (page ? buildSpeechPlan(page.words, page.layout, page.image.width, page.sentenceOverride) : null),
     [page],
   );
-
-  const allDone = book !== null && book.pages.length > 0 && finishedPages.size >= book.pages.length;
 
   function applyRound(next: FindRound) {
     roundRef.current = next;
@@ -117,6 +125,7 @@ export function StudentApp() {
     setFinishedPages(new Set());
     setHeardPages(new Set());
     setRound(null);
+    setSplash(null);
     setPhase("read");
   }
 
@@ -128,6 +137,7 @@ export function StudentApp() {
   function goTo(index: number) {
     bumpSpeech();
     stopNarration();
+    setSplash(null);
     setPageIndex(Math.max(0, Math.min(pages.length - 1, index)));
   }
 
@@ -137,7 +147,7 @@ export function StudentApp() {
       window.clearTimeout(missTimer.current);
       missTimer.current = null;
     }
-    const targets = pickTargetWords(page.words);
+    const targets = pickTargetWords(page.words, Math.random, page.focusTexts ?? []);
     const next: FindRound = {
       pageId: page.id,
       targets,
@@ -242,7 +252,10 @@ export function StudentApp() {
         promptAt: Date.now(),
         missId: null,
       });
-      if (complete) markPageDone(r.pageId);
+      if (complete) {
+        markPageDone(r.pageId);
+        setSplash(pageIndex >= pages.length - 1 ? "book" : "page");
+      }
       if (book) {
         void apiRecordWordFind({
           studentName: name,
@@ -258,10 +271,9 @@ export function StudentApp() {
       void (async () => {
         await speakClicked().done;
         if (speechGen.current !== gen) return;
-        if (!complete) {
-          const nextTarget = r.targets[nextIndex];
-          if (nextTarget) speakText(findPrompt(nextTarget), { rate: 0.85 });
-        }
+        if (complete) return;
+        const nextTarget = r.targets[nextIndex];
+        if (nextTarget) speakText(findPrompt(nextTarget), { rate: 0.85 });
       })();
       return;
     }
@@ -292,6 +304,7 @@ export function StudentApp() {
     setHeardPages(new Set());
     setPageIndex(0);
     setRound(null);
+    setSplash(null);
     setPhase("pick");
   }
 
@@ -503,7 +516,7 @@ export function StudentApp() {
           <Button
             variant="outline"
             onClick={() => goTo(pageIndex + 1)}
-            disabled={!pageComplete || pageIndex === pages.length - 1}
+            disabled={!pageComplete || pageIndex === pages.length - 1 || splash !== null}
             title={!pageComplete ? "Find all the words first" : undefined}
           >
             Next
@@ -518,15 +531,47 @@ export function StudentApp() {
           </p>
         )}
 
-        {allDone && (
-          <div className="mx-auto mt-6 max-w-2xl rounded-2xl bg-primary-soft p-6 text-center">
-            <p className="font-display text-2xl font-medium tracking-tight text-primary">You finished the book!</p>
-            <p className="mt-1 text-sm text-primary">Great finding, {name}.</p>
-            <Button className="mt-4" variant="secondary" onClick={restart}>
-              Read another book
-            </Button>
-          </div>
-        )}
+        <Dialog open={splash !== null} onOpenChange={() => undefined}>
+          <DialogContent
+            showClose={false}
+            onPointerDownOutside={(event) => event.preventDefault()}
+            onInteractOutside={(event) => event.preventDefault()}
+            onEscapeKeyDown={(event) => event.preventDefault()}
+            aria-describedby={undefined}
+          >
+            <DialogHeader>
+              <span className="mx-auto flex size-14 items-center justify-center rounded-xl bg-primary-soft text-primary">
+                <PartyPopper className="size-7" />
+              </span>
+              <DialogTitle className="mt-3">
+                {splash === "book" ? "You finished the book!" : "Good job!"}
+              </DialogTitle>
+              <DialogDescription>
+                {splash === "book"
+                  ? `Great finding, ${name}.`
+                  : "You found every word on this page."}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              {splash === "book" ? (
+                <Button className="w-full" onClick={restart}>
+                  Back to library
+                </Button>
+              ) : (
+                <Button
+                  className="w-full"
+                  onClick={() => {
+                    setSplash(null);
+                    goTo(pageIndex + 1);
+                  }}
+                >
+                  Next
+                  <ChevronRight />
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
